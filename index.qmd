@@ -1,0 +1,52 @@
+---
+title: "ST 558 Project 1"
+author: "Jarrett Glass, Shohn Godboldt"
+format: html
+editor: visual
+---
+
+## Data
+
+```         
+Our goal is to write functions that will manipulate and process data sets that come from a census API. We’ll create generic functions to automatically summarize and plot certain returned data. Lastly, we’ll write up a document via quarto (just like we did with the homework) to describe our thought process and give examples of using the functions.
+```
+
+We will use the PUMS Census API. It does seem that we do not have any specific tasks for what kinds of things to look up, or any specific (required) data to manipulate; just that we show we are capable of doing so. We must take care to document and describe a narrative as we go along.
+
+## Data Processing
+
+Write a function to query the API (use the `get()` function). A helper function is needed to take what is returned by `get` to turn it into a "nice `tibble`". 
+
+Will need a function to query the API that lets the user change:
+
+* Year of survey (default is 2022), must be a valid value between 2010 and 2022.
+
+* Specify the numeric variables returned (AGEP and PWGTP are default, but PWGTP should always be returned.)
+
+> * Specific options for the user: `AGEP`, `GASP`, `GRPIP`, `JWAP` (time), `JWDP` (time), `JWMNP`. Turn these into numeric or time values where appropriate, and `PWGTP` can not be the only numeric value.
+
+* Specify the categorical variables to be returned.
+
+> * SEX is default. Other options `FER`, `HHL`, `HISPEED`, `JWTRNS`, `SCH`, `SCHL`. Turn these into factors, and one categorical variable must be returned. (At least one. Not only one.)
+
+> Any variables selected that are not in the above bullets must be disregarded.
+
+> Specify geography level: `All`, `Region`, `Divisions`, `States`. Only these specified geo levels should be returned. Up to us on how to parse this.
+
+## Obtaining Person Level Records
+
+Process the data in the tibble appropriately. Variable `PWGTP` represents the number of people/observations for a particular row.
+
+## Writing generic function for summarizing
+
+Looks like a good bit in this section, including manipulating the class of our tibble object; writing a custom summary function for it; etc.
+
+* It should take 3 variables
+
+> 1. The tibble with the class `census` (the tibble we manipulated above)
+
+> 2. The numeric variable(s) to summarize, and
+
+> 3. The categorical variable(s) to summarize. 
+
+Summarize all of the variables by default, but the user should also be able to specify the variables they'd like to summarize. (I'm unsure if this means they should be able to add details into the `summary` function, or what.)
