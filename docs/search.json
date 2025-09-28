@@ -1,0 +1,30 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "ST 558 Project 1",
+    "section": "",
+    "text": "The United States Census Bureau, operating under Titles 13 and 26 of the U.S. Code, are charged with collecting demographic information about people and families living in the US. They are dedicated to providing quality data, which is crucial as they are used for vital tasks such as\n\n\n\n\n\n\nDetermining the distribution of Congressional seats to states;\n\nMaking planning decisions about community services;\nInforming how trillions of dollars in federal funds are distributed to local, state, and tribal governments each year;\nProviding Age Search information (Social Security, Passports, estate resolutions, etc.)\n\n\nSource: https://www.census.gov/about/what.html\n\n\n\n\nSince 2012, the US Census Bureau has maintained a public Application Programming Interface (API) to allow users to send queries to their databases.\nOur goal is to write functions that will manipulate and process data sets that come from a census API. We’ll create generic functions to automatically summarize and plot certain returned data. Lastly, we’ll write up a document via quarto (just like we did with the homework) to describe our thought process and give examples of using the functions.\nWe will use the PUMS Census API. It does seem that we do not have any specific tasks for what kinds of things to look up, or any specific (required) data to manipulate; just that we show we are capable of doing so. We must take care to document and describe a narrative as we go along.\n\n\nWrite a function to query the API (use the get() function). A helper function is needed to take what is returned by get to turn it into a “nice tibble”.\nWill need a function to query the API that lets the user change:\n\nYear of survey (default is 2022), must be a valid value between 2010 and 2022.\nSpecify the numeric variables returned (AGEP and PWGTP are default, but PWGTP should always be returned.)\n\n\n\nSpecific options for the user: AGEP, GASP, GRPIP, JWAP (time), JWDP (time), JWMNP. Turn these into numeric or time values where appropriate, and PWGTP can not be the only numeric value.\n\n\n\nSpecify the categorical variables to be returned.\n\n\n\nSEX is default. Other options FER, HHL, HISPEED, JWTRNS, SCH, SCHL. Turn these into factors, and one categorical variable must be returned. (At least one. Not only one.)\n\n\n\nAny variables selected that are not in the above bullets must be disregarded.\n\n\nSpecify geography level: All, Region, Divisions, States. Only these specified geo levels should be returned. Up to us on how to parse this.\n\n\n\n\nProcess the data in the tibble appropriately. Variable PWGTP represents the number of people/observations for a particular row.\n\n\n\nLooks like a good bit in this section, including manipulating the class of our tibble object; writing a custom summary function for it; etc.\n\nIt should take 3 variables\n\n\n\nThe tibble with the class census (the tibble we manipulated above)\n\n\n\n\nThe numeric variable(s) to summarize, and\n\n\n\n\nThe categorical variable(s) to summarize.\n\n\nSummarize all of the variables by default, but the user should also be able to specify the variables they’d like to summarize. (I’m unsure if this means they should be able to add details into the summary function, or what.)"
+  },
+  {
+    "objectID": "index.html#data-processing",
+    "href": "index.html#data-processing",
+    "title": "ST 558 Project 1",
+    "section": "",
+    "text": "Write a function to query the API (use the get() function). A helper function is needed to take what is returned by get to turn it into a “nice tibble”.\nWill need a function to query the API that lets the user change:\n\nYear of survey (default is 2022), must be a valid value between 2010 and 2022.\nSpecify the numeric variables returned (AGEP and PWGTP are default, but PWGTP should always be returned.)\n\n\n\nSpecific options for the user: AGEP, GASP, GRPIP, JWAP (time), JWDP (time), JWMNP. Turn these into numeric or time values where appropriate, and PWGTP can not be the only numeric value.\n\n\n\nSpecify the categorical variables to be returned.\n\n\n\nSEX is default. Other options FER, HHL, HISPEED, JWTRNS, SCH, SCHL. Turn these into factors, and one categorical variable must be returned. (At least one. Not only one.)\n\n\n\nAny variables selected that are not in the above bullets must be disregarded.\n\n\nSpecify geography level: All, Region, Divisions, States. Only these specified geo levels should be returned. Up to us on how to parse this."
+  },
+  {
+    "objectID": "index.html#obtaining-person-level-records",
+    "href": "index.html#obtaining-person-level-records",
+    "title": "ST 558 Project 1",
+    "section": "",
+    "text": "Process the data in the tibble appropriately. Variable PWGTP represents the number of people/observations for a particular row."
+  },
+  {
+    "objectID": "index.html#writing-generic-function-for-summarizing",
+    "href": "index.html#writing-generic-function-for-summarizing",
+    "title": "ST 558 Project 1",
+    "section": "",
+    "text": "Looks like a good bit in this section, including manipulating the class of our tibble object; writing a custom summary function for it; etc.\n\nIt should take 3 variables\n\n\n\nThe tibble with the class census (the tibble we manipulated above)\n\n\n\n\nThe numeric variable(s) to summarize, and\n\n\n\n\nThe categorical variable(s) to summarize.\n\n\nSummarize all of the variables by default, but the user should also be able to specify the variables they’d like to summarize. (I’m unsure if this means they should be able to add details into the summary function, or what.)"
+  }
+]

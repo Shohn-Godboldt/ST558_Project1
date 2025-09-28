@@ -5,33 +5,94 @@ format: html
 editor: visual
 ---
 
-## Data
+# Introduction to the PUMS API
 
-```         
-Our goal is to write functions that will manipulate and process data sets that come from a census API. We’ll create generic functions to automatically summarize and plot certain returned data. Lastly, we’ll write up a document via quarto (just like we did with the homework) to describe our thought process and give examples of using the functions.
-```
+The United States Census Bureau, operating under Titles 13 and 26 of the U.S. Code, are charged with collecting demographic information about people and families living in the US. They are dedicated to providing quality data, which is crucial as they are used for vital tasks such as
 
-We will use the PUMS Census API. It does seem that we do not have any specific tasks for what kinds of things to look up, or any specific (required) data to manipulate; just that we show we are capable of doing so. We must take care to document and describe a narrative as we go along.
+:::: {.callout-note appearance="simple" icon="false"}
+Determining the distribution of Congressional seats to states;
 
-## Data Processing
+-   Making planning decisions about community services;
+-   Informing how trillions of dollars in federal funds are distributed to local, state, and tribal governments each year;
+-   Providing Age Search information (Social Security, Passports, estate resolutions, etc.)
 
-Write a function to query the API (use the `get()` function). A helper function is needed to take what is returned by `get` to turn it into a "nice `tibble`". 
+::: {style="font-size:0.9em;font-style:italic;color:#555;margin-top:0.5em;"}
+Source: https://www.census.gov/about/what.html
+:::
+::::
 
-Will need a function to query the API that lets the user change:
+The US Census Bureau has maintained a public Application Programming Interface (API) since 2012 to allow users to send queries to their databases. The API, called the `Public Use Microdata Sample (PUMS)` API, is accessible by using a specific URL, which need be constructed to contain all the elements of the query. In this instance, the API is the **Public Use Microdata Sample** (PUMS) API, which utilizes data collected from the **American Community Survey** (ACS).
 
-* Year of survey (default is 2022), must be a valid value between 2010 and 2022.
+As stated, the specific variables and terms in the URL used are what define the query and state the terms of the request. The structure of this is:
 
-* Specify the numeric variables returned (AGEP and PWGTP are default, but PWGTP should always be returned.)
++--------------------+---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Element            | Code Example                                      | Use                                                                                                                                                                                                                                                                                                                                                     |
++====================+===================================================+=========================================================================================================================================================================================================================================================================================================================================================+
+| Root URL           | `https://api.census.gov/data/2022/acs/acs1/pums?` | Root address for where the queries should be addressed, and the primary target of the `GET()` request. This specifically targets \                                                                                                                                                                                                                      |
+|                    |                                                   | 1) data from 2022,\                                                                                                                                                                                                                                                                                                                                     |
+|                    |                                                   | 2) their ACS data set, and\                                                                                                                                                                                                                                                                                                                             |
+|                    |                                                   | 3) more specifically the 1-year ACS estimates.                                                                                                                                                                                                                                                                                                          |
++--------------------+---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Query parameters   | `get=VAR1,VAR2,VAR3`                              | `get` specifies the specific variables for which we wish to receive data.                                                                                                                                                                                                                                                                               |
+|                    |                                                   |                                                                                                                                                                                                                                                                                                                                                         |
+|                    | `for=state:01,02,03`                              | `for` specifies the geographic area, where region, division, or state names are represented by numeric codes.                                                                                                                                                                                                                                           |
+|                    |                                                   |                                                                                                                                                                                                                                                                                                                                                         |
+|                    | `tabulate=weight(VAR1)`\                          | `tabulate` is an *alternative* to `get`, this would perform aggregation on raw data and return a table of statistics. This example shows the variable to use for grouping (VAR1), the column variable (VAR2), and the variables to use in the rows (VAR3, VAR4, etc. More variables can be included with additional `&row+` or `&col+` statements). \   |
+|                    | `&col+VAR2` \                                     | Additionally, `&for=GEO` would define geographical area for the search, and either `&row+for` or `&col+for` would further include geographical breakdown in the table of results.from                                                                                                                                                                   |
+|                    | `&row+VAR3`\                                      |                                                                                                                                                                                                                                                                                                                                                         |
+|                    | `&for=GEO`\                                       |                                                                                                                                                                                                                                                                                                                                                         |
+|                    | `&row+for`, `&col+for`                            |                                                                                                                                                                                                                                                                                                                                                         |
++--------------------+---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Additional Filters | `&VAR=Value`                                      | Any other additional filters that would allow a user to refine the search further and create more specificity.                                                                                                                                                                                                                                          |
++--------------------+---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 
-> * Specific options for the user: `AGEP`, `GASP`, `GRPIP`, `JWAP` (time), `JWDP` (time), `JWMNP`. Turn these into numeric or time values where appropriate, and `PWGTP` can not be the only numeric value.
+: Structure of PUMS API query URL
 
-* Specify the categorical variables to be returned.
+Our goal is to write a function that will query this PUMS API for a selection of variables and perform some manipulations and processing of the resulting data sets.
 
-> * SEX is default. Other options `FER`, `HHL`, `HISPEED`, `JWTRNS`, `SCH`, `SCHL`. Turn these into factors, and one categorical variable must be returned. (At least one. Not only one.)
+## Establishing the Query Function
 
-> Any variables selected that are not in the above bullets must be disregarded.
+Write a function to query the API (use the `GET()` function from `library(httr)`). A helper function is needed to take what is returned by `get` to turn it into a "nice `tibble`".
 
-> Specify geography level: `All`, `Region`, `Divisions`, `States`. Only these specified geo levels should be returned. Up to us on how to parse this.
+This will be a function to query the API that allows the user to specify:
+
+-   Year of survey (default is 2022; must be a valid value between 2010 and 2022).
+
+-   The numeric variables that could be queried for are:
+
+    -   `PWGTP` - PUMS `person` weight, indicating the number of people that a single "person" record could "speak" for. (This variable must be included, and can not be removed by the user.)
+
+    -   `AGEP` - Person age (default value along with `PWGTP`, but this one can be changed)
+
+    -   `GASP` - The cost of gas for housing during the 12-month period reviewed.
+
+    -   `GRPIP` - Gross Rent as a Percentage of household Income
+
+    -   `JWDP (time)` - Time of **departure** for work.
+
+    -   `JWAP (time)` - Time of **arrival** at work.
+
+    -   `JWMNP` - The number of minutes spent commuting to work.
+
+-   The categorical variables that could be queried for are:
+
+    -   `SEX` - This was intended to refer to *biological* sex of the survey responder, but this survey is self-reporting and voluntary. This is to be the default categorical variable, and multiple can be selected.
+
+    -   `FER` - Refers to "fertility", an indicator variable for whether a woman has given birth within the previous 12 months from the survey. This is only valid for women aged 15 to 50.
+
+    -   `HHL` - The household language.
+
+    -   `HISPEED` - Indicates if the residence has high-speed internet (fiber optic, DSL, etc.)
+
+    -   `JWTRNS` - The primary means of transportation to go to work.
+
+    -   `SCH` - School enrollment, this indicates whether a person is currently enrolled in school; and what level they may be in.
+
+    -   `SCHL` - The level of degree/schooling a person has received.
+
+-   The geographic level (`All`, `Region`, `Division`, `State` should be specified.
+
+-   Any numeric, categorical, or geographic levels not specified above will be disregarded.
 
 ## Obtaining Person Level Records
 
@@ -41,12 +102,12 @@ Process the data in the tibble appropriately. Variable `PWGTP` represents the nu
 
 Looks like a good bit in this section, including manipulating the class of our tibble object; writing a custom summary function for it; etc.
 
-* It should take 3 variables
+-   It should take 3 variables
 
-> 1. The tibble with the class `census` (the tibble we manipulated above)
+> 1.  The tibble with the class `census` (the tibble we manipulated above)
 
-> 2. The numeric variable(s) to summarize, and
+> 2.  The numeric variable(s) to summarize, and
 
-> 3. The categorical variable(s) to summarize. 
+> 3.  The categorical variable(s) to summarize.
 
 Summarize all of the variables by default, but the user should also be able to specify the variables they'd like to summarize. (I'm unsure if this means they should be able to add details into the `summary` function, or what.)
