@@ -52,7 +52,7 @@ Our goal is to write a function that will query this PUMS API for a selection of
 
 ## Establishing the Query Function
 
-Write a function to query the API (use the `GET()` function from `library(httr)`). A helper function is needed to take what is returned by `get` to turn it into a "nice `tibble`".
+We need to construction a function to query the API \[use the `GET()` function from `library(httr)`\]. A helper function will be needed to take what is returned by `get` to turn it into a "nice `tibble`".
 
 This will be a function to query the API that allows the user to specify:
 
@@ -104,10 +104,39 @@ Looks like a good bit in this section, including manipulating the class of our t
 
 -   It should take 3 variables
 
-> 1.  The tibble with the class `census` (the tibble we manipulated above)
+     1.  The tibble with the class `census` (the tibble we manipulated above)
 
-> 2.  The numeric variable(s) to summarize, and
+     2.  The numeric variable(s) to summarize, and
 
-> 3.  The categorical variable(s) to summarize.
+     3.  The categorical variable(s) to summarize.
 
-Summarize all of the variables by default, but the user should also be able to specify the variables they'd like to summarize. (I'm unsure if this means they should be able to add details into the `summary` function, or what.)
+```{r}
+summary.census <- function(object, numerics=FALSE, categoricals=FALSE) {
+  
+  # If `numerics` are provided, confirm they are actually numeric variables:
+  if (numerics) {
+    if (!all(sapply(object[numerics], is.numeric))) {
+      stop("Selected numeric variables should all be numeric.")
+    }
+  } else {
+    numerics <- names(select(object, where(is.numeric)))
+  }
+  
+  # If `categoricals` are provided, confirm they're actually factors:
+  if (categoricals) {
+    if (!all(sapply(object[categoricals], is.factor))) {
+      stop("Selected categorical variables should all be factors.")
+    }
+  } else {
+    categoricals <- names(select(object, where(is.factor)))
+  }
+  
+  # Reduce the input `object` to its selected variables.
+  object <- object |>
+              select(numerics, categoricals)
+  result <- summary(object)
+  class(result) <- "summary.census"
+  result
+}
+```
+
