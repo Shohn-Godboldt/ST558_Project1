@@ -54,3 +54,73 @@ check_inputs <- function(year, numeric_vars, cat_vars, geo, subset) {
   
   invisible(TRUE)
 }
+
+# ---- STEP 3: metadata helpers (simple + commented) -------------------------
+
+# Get the variable dictionary (metadata) for a given year.
+# Returns a big list, or NULL if the request fails.
+get_variables_metadata <- function(year) {
+  # Build the variables.json URL for the chosen year
+  url  <- paste0(pums_base(year), "/variables.json")
+  
+  # Make a GET request
+  resp <- httr::GET(url)
+  
+  # If HTTP error (e.g., 404/500), just return NULL quietly
+  if (httr::http_error(resp)) return(NULL)
+  
+  # Pull the response text and convert from JSON to an R list
+  txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+  meta <- jsonlite::fromJSON(txt, simplifyVector = FALSE)
+  
+  return(meta)
+}
+
+# From the metadata list, build a simple lookup (named character vector)
+# for a variable: names = codes, values = human-readable labels.
+# If the variable has no labels, return NULL.
+# label_lookup (handles list/vector values safely) ----
+# label_lookup(): return a named vector {code -> label} ----
+label_lookup <- function(meta, var) {
+  if (is.null(meta) || is.null(meta$variables)) return(NULL)
+  
+  entry <- meta$variables[[var]]
+  if (is.null(entry) || is.null(entry$values)) return(NULL)
+  
+  vals <- entry$values
+  
+  # Case 1: top-level has item & label VECTORS (e.g., SEX)
+  if (is.list(vals) && !is.null(vals$item) && !is.null(vals$label)) {
+    codes  <- as.character(vals$item)
+    labels <- as.character(vals$label)
+    names(labels) <- codes
+    return(labels)
+  }
+  
+  # Case 2: list of small objects each with $item and $label
+  if (is.list(vals) && length(vals) > 0 && all(vapply(vals, is.list, logical(1)))) {
+    has_item  <- all(vapply(vals, function(x) !is.null(x$item),  logical(1)))
+    has_label <- all(vapply(vals, function(x) !is.null(x$label), logical(1)))
+    if (has_item && has_label) {
+      codes  <- vapply(vals, function(x) as.character(x$item)[1],  character(1))
+      labels <- vapply(vals, function(x) as.character(x$label)[1], character(1))
+      names(labels) <- codes
+      return(labels)
+    }
+  }
+  
+  # Case 3: named list/vector (names are already codes)
+  if (!is.null(names(vals))) {
+    labels <- vapply(vals, function(x) as.character(if (is.list(x)) x[[1]] else x)[1],
+                     character(1))
+    names(labels) <- names(vals)
+    return(labels)
+  }
+  
+  # Fallback: flatten to character (codes unknown)
+  as.character(unlist(vals, use.names = FALSE))
+}
+
+
+
+
