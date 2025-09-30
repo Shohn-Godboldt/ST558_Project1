@@ -5,6 +5,11 @@ format: html
 editor: visual
 ---
 
+```{r}
+#| echo: FALSE
+library(tidyverse)
+```
+
 # Introduction to the PUMS API
 
 The United States Census Bureau, operating under Titles 13 and 26 of the U.S. Code, are charged with collecting demographic information about people and families living in the US. They are dedicated to providing quality data, which is crucial as they are used for vital tasks such as
@@ -25,26 +30,22 @@ The US Census Bureau has maintained a public Application Programming Interface (
 
 As stated, the specific variables and terms in the URL used are what define the query and state the terms of the request. The structure of this is:
 
-+--------------------+---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| Element            | Code Example                                      | Use                                                                                                                                                                                                                                                                                                                                                     |
-+====================+===================================================+=========================================================================================================================================================================================================================================================================================================================================================+
-| Root URL           | `https://api.census.gov/data/2022/acs/acs1/pums?` | Root address for where the queries should be addressed, and the primary target of the `GET()` request. This specifically targets \                                                                                                                                                                                                                      |
-|                    |                                                   | 1) data from 2022,\                                                                                                                                                                                                                                                                                                                                     |
-|                    |                                                   | 2) their ACS data set, and\                                                                                                                                                                                                                                                                                                                             |
-|                    |                                                   | 3) more specifically the 1-year ACS estimates.                                                                                                                                                                                                                                                                                                          |
-+--------------------+---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| Query parameters   | `get=VAR1,VAR2,VAR3`                              | `get` specifies the specific variables for which we wish to receive data.                                                                                                                                                                                                                                                                               |
-|                    |                                                   |                                                                                                                                                                                                                                                                                                                                                         |
-|                    | `for=state:01,02,03`                              | `for` specifies the geographic area, where region, division, or state names are represented by numeric codes.                                                                                                                                                                                                                                           |
-|                    |                                                   |                                                                                                                                                                                                                                                                                                                                                         |
-|                    | `tabulate=weight(VAR1)`\                          | `tabulate` is an *alternative* to `get`, this would perform aggregation on raw data and return a table of statistics. This example shows the variable to use for grouping (VAR1), the column variable (VAR2), and the variables to use in the rows (VAR3, VAR4, etc. More variables can be included with additional `&row+` or `&col+` statements). \   |
-|                    | `&col+VAR2` \                                     | Additionally, `&for=GEO` would define geographical area for the search, and either `&row+for` or `&col+for` would further include geographical breakdown in the table of results.from                                                                                                                                                                   |
-|                    | `&row+VAR3`\                                      |                                                                                                                                                                                                                                                                                                                                                         |
-|                    | `&for=GEO`\                                       |                                                                                                                                                                                                                                                                                                                                                         |
-|                    | `&row+for`, `&col+for`                            |                                                                                                                                                                                                                                                                                                                                                         |
-+--------------------+---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| Additional Filters | `&VAR=Value`                                      | Any other additional filters that would allow a user to refine the search further and create more specificity.                                                                                                                                                                                                                                          |
-+--------------------+---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
++--------------------+---------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Element            | Code Example                                      | Use                                                                                                                                                                                |
++====================+===================================================+====================================================================================================================================================================================+
+| Root URL           | `https://api.census.gov/data/2022/acs/acs1/pums?` | Root address for where the queries should be addressed, and the primary target of the `GET()` request. This specifically targets\                                                  |
+|                    |                                                   | 1) data from 2022,\                                                                                                                                                                |
+|                    |                                                   | 2) their ACS data set, and\                                                                                                                                                        |
+|                    |                                                   | 3) more specifically the 1-year ACS estimates.                                                                                                                                     |
++--------------------+---------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Query parameters   | `get=VAR1,VAR2,VAR3`                              | `get` specifies the specific variables for which we wish to receive data.                                                                                                          |
+|                    |                                                   |                                                                                                                                                                                    |
+|                    | `for=state:01,02,03`                              | `for` specifies the geographic area, where region, division, or state names are represented by numeric codes.                                                                      |
+|                    |                                                   |                                                                                                                                                                                    |
+|                    | `tabulate=weight(VAR1)`\                          | `tabulate` is an *alternative* to `get`, and would perform aggregation on raw data and return a table of statistics. This parameter is not reviewed or evaluated in this exercise. |
++--------------------+---------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Additional Filters | `&VAR=Value`                                      | Any other additional filters that would allow a user to refine the search further and create more specificity.                                                                     |
++--------------------+---------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 
 : Structure of PUMS API query URL
 
@@ -90,7 +91,7 @@ This will be a function to query the API that allows the user to specify:
 
     -   `SCHL` - The level of degree/schooling a person has received.
 
--   The geographic level (`All`, `Region`, `Division`, `State` should be specified.
+-   The geographic levels (`All`, `Region`, `Division`, `State`) should be specified.
 
 -   Any numeric, categorical, or geographic levels not specified above will be disregarded.
 
@@ -100,43 +101,84 @@ Process the data in the tibble appropriately. Variable `PWGTP` represents the nu
 
 ## Writing generic function for summarizing
 
-Looks like a good bit in this section, including manipulating the class of our tibble object; writing a custom summary function for it; etc.
+A `summary` function has been created to take our `census` objects and provide some statistical information. 
 
--   It should take 3 variables
+The function was created in a way that took up to three variables:
 
-     1.  The tibble with the class `census` (the tibble we manipulated above)
+1.  The `census` item generated in the function above;
 
-     2.  The numeric variable(s) to summarize, and
+2.  (OPTIONAL) A vector or single item with keyword `numerics=` which will contain the **numeric** variables selected. An error is generated if the keyword `numerics=` is used with a categorical column.
+    
++ Note: The `PWGTP` variable is not returned by default. This must be specifically requested in `numerics=` in order to call it.
 
-     3.  The categorical variable(s) to summarize.
+3.  (OPTIONAL) A vector or single item with the keyword `categoricals=` which will contain the **categorical** variables selected. An error is generated in the keyword `categoricals=` is used with a numeric column.
+
+The summary statistics returned will be the mean and standard deviation for each numeric variable, and the counts of each factor for categorical variables. These are returned as named lists, which are convenient for assigning to a variable and calling specific items. 
 
 ```{r}
-summary.census <- function(object, numerics=FALSE, categoricals=FALSE) {
+summary.census <- function(object, ...) {
+  
+  args <- list(...)
+  
+  # Stop if any keywords are included that are not `numerics` or `categoricals`
+  if (length(setdiff(names(args), c("numerics", "categoricals")))) {
+    stop("Keyword error: keywords must be `numerics=` or `categoricals=` to specify column summary request.")
+  }
   
   # If `numerics` are provided, confirm they are actually numeric variables:
-  if (numerics) {
-    if (!all(sapply(object[numerics], is.numeric))) {
+  if ("numerics" %in% names(args)) {
+    if (!all(sapply(object[args$numerics], is.numeric))) {
       stop("Selected numeric variables should all be numeric.")
-    }
+    } else { numerics <- args$numerics }
   } else {
     numerics <- names(select(object, where(is.numeric)))
+    # Unless it's specified, do not return PWGTP variable.    
+    numerics <- numerics[!numerics %in% "PWGTP"]
   }
   
   # If `categoricals` are provided, confirm they're actually factors:
-  if (categoricals) {
-    if (!all(sapply(object[categoricals], is.factor))) {
+  if ("categoricals" %in% names(args)) {
+    if (!all(sapply(object[args$categoricals], is.factor))) {
       stop("Selected categorical variables should all be factors.")
-    }
-  } else {
-    categoricals <- names(select(object, where(is.factor)))
-  }
+    } else { categoricals <- args$categoricals }
+  } else categoricals <- names(select(object, where(is.factor)))
   
   # Reduce the input `object` to its selected variables.
-  object <- object |>
-              select(numerics, categoricals)
-  result <- summary(object)
-  class(result) <- "summary.census"
-  result
+  object <- object |> select(numerics, categoricals)
+  
+  # Function to produce `summary` reporting for census object
+  report <- function(obj) {
+    # Numeric variables: return a named list with `mean` and `sigma`
+    if (class(obj) == "numeric") list(mean=mean(obj), sigma=sd(obj))
+    # Categorical variables: return unique factors and their counts.
+    else if (class(obj) == "factor") table(obj)
+    # Fail if object class is neither numeric nor factor.
+    else stop("Improper class passed to report function.")
+  }
+  lapply(as.list(object), FUN=report)
 }
+
+# THIS IS JUST TO SHOW THAT IT WORKS. Show some examples using the function created here.
+example <- iris
+class(example) <- c("census", class(iris))
+summary(example)
 ```
 
+## Plot function
+
+Similar to the `summary` adaptation above, a `plot` adaptation is also generated for `census` objects. This is designed to require a single categorical variable and a single numerical variable, as strings. The usage for this command is
+
+```plot(object, categorical="[Categorical Var]", numerical="[Numerical Variable]")```
+
+where *[Categorical Var]* and *[Numerical Var]* are substitued with the names of the desired columns of their requisite classes.
+
+```{r}
+# Run plot() on a `census` object.
+
+plot.census <- function(object, categorical, numerical, ...) {
+  args = list(...) # Look at possibly adding options for customization. Add a title, for instance?
+  ggplot(object,
+         aes(x=get(categorical), y=get(numerical), weight=PWGTP)) +
+    geom_boxplot()
+}
+```
