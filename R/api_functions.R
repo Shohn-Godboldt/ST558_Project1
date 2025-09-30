@@ -122,5 +122,22 @@ label_lookup <- function(meta, var) {
 }
 
 
+# building the Census API URL 
+build_url <- function(year, get_vars, geo, subset_codes) {
+  base <- pums_base(year)
+  geo_field <- GEO_FIELD[[geo]]
+  
+  # Always include PWGTP (weight). Include geo field so it appears in results.
+  get_list <- unique(c(get_vars, "PWGTP", if (!is.na(geo_field)) geo_field))
+  
+  # Encode only the list of columns after get=
+  url <- paste0(base, "?get=", URLencode(paste(get_list, collapse = ",")))
+  
+  # If user asked for a subset (e.g., specific states), add "&ST=37,45"
+  if (!is.na(geo_field) && length(subset_codes)) {
+    url <- paste0(url, "&", geo_field, "=", paste(subset_codes, collapse = ","))
+  }
+  url
+}
 
 
