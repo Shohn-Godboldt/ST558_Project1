@@ -55,7 +55,7 @@ check_inputs <- function(year, numeric_vars, cat_vars, geo, subset) {
   invisible(TRUE)
 }
 
-# ---- STEP 3: metadata helpers (simple + commented) -------------------------
+# Metadata helpers
 
 # Get the variable dictionary (metadata) for a given year.
 # Returns a big list, or NULL if the request fails.
@@ -79,50 +79,75 @@ get_variables_metadata <- function(year) {
 # From the metadata list, build a simple lookup (named character vector)
 # for a variable: names = codes, values = human-readable labels.
 # If the variable has no labels, return NULL.
-# label_lookup (handles list/vector values safely) ----
-# label_lookup(): return a named vector {code -> label} ----
+# label_lookup(): always return named {code -> label} 
 label_lookup <- function(meta, var) {
   if (is.null(meta) || is.null(meta$variables)) return(NULL)
-  
   entry <- meta$variables[[var]]
   if (is.null(entry) || is.null(entry$values)) return(NULL)
   
   vals <- entry$values
   
-  # Case 1: top-level has item & label VECTORS (e.g., SEX)
-  if (is.list(vals) && !is.null(vals$item) && !is.null(vals$label)) {
-    codes  <- as.character(vals$item)
-    labels <- as.character(vals$label)
-    names(labels) <- codes
-    return(labels)
-  }
-  
-  # Case 2: list of small objects each with $item and $label
-  if (is.list(vals) && length(vals) > 0 && all(vapply(vals, is.list, logical(1)))) {
-    has_item  <- all(vapply(vals, function(x) !is.null(x$item),  logical(1)))
-    has_label <- all(vapply(vals, function(x) !is.null(x$label), logical(1)))
-    if (has_item && has_label) {
-      codes  <- vapply(vals, function(x) as.character(x$item)[1],  character(1))
-      labels <- vapply(vals, function(x) as.character(x$label)[1], character(1))
-      names(labels) <- codes
-      return(labels)
+  # 0) If it's already a nice data.frame with code/label columns
+  if (is.data.frame(vals)) {
+    code_col  <- intersect(c("item","value","code","id"), names(vals))[1]
+    label_col <- intersect(c("label","text","description","name"), names(vals))[1]
+    if (!is.na(code_col) && !is.na(label_col)) {
+      labs <- as.character(vals[[label_col]])
+      names(labs) <- as.character(vals[[code_col]])
+      return(labs)
     }
   }
   
-  # Case 3: named list/vector (names are already codes)
-  if (!is.null(names(vals))) {
-    labels <- vapply(vals, function(x) as.character(if (is.list(x)) x[[1]] else x)[1],
-                     character(1))
-    names(labels) <- names(vals)
-    return(labels)
+  # 1) Try to normalize any odd list shape into a data.frame
+  #    by round-tripping through JSON with simplifyVector = TRUE
+  norm <- try(
+    jsonlite::fromJSON(jsonlite::toJSON(vals, auto_unbox = TRUE),
+                       simplifyVector = TRUE),
+    silent = TRUE
+  )
+  
+  if (!inherits(norm, "try-error")) {
+    # A) data.frame with columns
+    if (is.data.frame(norm)) {
+      code_col  <- intersect(c("item","value","code","id"), names(norm))[1]
+      label_col <- intersect(c("label","text","description","name"), names(norm))[1]
+      if (!is.na(code_col) && !is.na(label_col)) {
+        labs <- as.character(norm[[label_col]])
+        names(labs) <- as.character(norm[[code_col]])
+        return(labs)
+      }
+    }
+    # B) list with vectors item/label
+    if (is.list(norm) && !is.null(norm$item) && !is.null(norm$label)) {
+      labs <- as.character(norm$label)
+      names(labs) <- as.character(norm$item)
+      return(labs)
+    }
   }
   
-  # Fallback: flatten to character (codes unknown)
-  as.character(unlist(vals, use.names = FALSE))
+  # 2) As a last resort, handle named list/vector directly
+  if (is.list(vals) && !is.null(vals$item) && !is.null(vals$label)) {
+    labs <- as.character(vals$label)
+    names(labs) <- as.character(vals$item)
+    return(labs)
+  }
+  if (!is.null(names(vals))) {
+    labs <- vapply(vals, function(x) {
+      if (is.list(x)) as.character(x[[1]])[1] else as.character(x)[1]
+    }, character(1))
+    names(labs) <- names(vals)
+    return(labs)
+  }
+  
+  # No reliable mapping
+  NULL
 }
 
 
-# building the Census API URL 
+
+
+
+# Building the Census API URL 
 build_url <- function(year, get_vars, geo, subset_codes) {
   base <- pums_base(year)
   geo_field <- GEO_FIELD[[geo]]
@@ -140,4 +165,85 @@ build_url <- function(year, get_vars, geo, subset_codes) {
   url
 }
 
+
+
+# Default labels we can fall back to if metadata is awkward
+default_labels <- function(var) {
+  if (var == "SEX")  return(c(`1`="Male", `2`="Female"))
+  if (var == "SCHL") return(c(`16`="Regular high school diploma",
+                              `21`="Bachelor's degree"))
+  NULL
+}
+
+# Is the label map usable for these codes? (must have names, and at least one match)
+valid_labs <- function(codes_chr, labs_named) {
+  if (is.null(labs_named) || is.null(names(labs_named))) return(FALSE)
+  nm2    <- sub("^0+", "", names(labs_named))
+  codes2 <- sub("^0+", "", codes_chr)
+  any(codes2 %in% nm2)
+}
+
+# turn raw strings into useful R columns 
+coerce_columns <- function(df, year, numeric_vars, cat_vars, geo) {
+  meta <- get_variables_metadata(year)
+  
+  # 1) plain numeric variables (JWAP/JWDP handled below)
+  plain_numeric <- setdiff(numeric_vars, c("JWAP","JWDP"))
+  for (v in plain_numeric) {
+    if (v %in% names(df)) df[[v]] <- suppressWarnings(as.numeric(df[[v]]))
+  }
+  
+  # 2) time variables -> numeric midpoints (prefer labels; fallback numeric)
+  for (tv in intersect(c("JWAP","JWDP"), numeric_vars)) {
+    if (tv %in% names(df)) {
+      labs_raw <- label_lookup(meta, tv)
+      labs     <- if (valid_labs(df[[tv]], labs_raw)) labs_raw else default_labels(tv)
+      
+      lbl <- map_labels(as.character(df[[tv]]), labs)
+      if (all(is.na(lbl))) {
+        df[[tv]] <- suppressWarnings(as.numeric(df[[tv]]))  # fallback if still no match
+      } else {
+        df[[tv]] <- vapply(lbl, midpoint_from_label, numeric(1))
+      }
+    }
+  }
+  
+  # 3) categorical variables -> factors with readable labels
+  for (cv in cat_vars) {
+    if (cv %in% names(df)) {
+      labs_raw <- label_lookup(meta, cv)
+      labs     <- if (valid_labs(df[[cv]], labs_raw)) labs_raw else default_labels(cv)
+      
+      lbl <- map_labels(as.character(df[[cv]]), labs)
+      if (all(is.na(lbl))) {
+        df[[cv]] <- factor(df[[cv]])              # keep codes if we truly can’t map
+      } else {
+        df[[cv]] <- factor(lbl, levels = unique(unname(labs)))
+      }
+    }
+  }
+  
+  # 4) weights numeric
+  if ("PWGTP" %in% names(df)) df$PWGTP <- suppressWarnings(as.numeric(df$PWGTP))
+  
+  # 5) label the geography field too (if present)
+  geo_field <- GEO_FIELD[[geo]]
+  if (!is.na(geo_field) && geo_field %in% names(df)) {
+    labs_raw <- label_lookup(meta, geo_field)
+    labs     <- if (valid_labs(df[[geo_field]], labs_raw)) labs_raw else default_labels(geo_field)
+    
+    if (!is.null(labs)) {
+      lbl <- map_labels(as.character(df[[geo_field]]), labs)
+      if (all(is.na(lbl))) {
+        df[[geo_field]] <- factor(df[[geo_field]])
+      } else {
+        df[[geo_field]] <- factor(lbl, levels = unique(unname(labs)))
+      }
+    } else {
+      df[[geo_field]] <- factor(df[[geo_field]])
+    }
+  }
+  
+  df
+}
 
