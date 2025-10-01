@@ -5,11 +5,6 @@ format: html
 editor: visual
 ---
 
-```{r}
-#| echo: FALSE
-library(tidyverse)
-```
-
 # Introduction to the PUMS API
 
 The United States Census Bureau, operating under Titles 13 and 26 of the U.S. Code, are charged with collecting demographic information about people and families living in the US. They are dedicated to providing quality data, which is crucial as they are used for vital tasks such as
@@ -95,9 +90,315 @@ This will be a function to query the API that allows the user to specify:
 
 -   Any numeric, categorical, or geographic levels not specified above will be disregarded.
 
-## Obtaining Person Level Records
+## Generation of the API access function
 
-Process the data in the tibble appropriately. Variable `PWGTP` represents the number of people/observations for a particular row.
+### Constants
+
+The first step for generation of the function will be to ensure the packages to include, and our constants, are clearly defined. In this case, the constants are the allowable numeric and categorical variables as specified above.
+
+```{r}
+ALLOWED_NUMERIC <- c("AGEP","GASP","GRPIP","JWAP","JWDP","JWMNP")  # PWGTP always added
+ALLOWED_CATEG   <- c("FER","HHL","HISPEED","JWTRNS","SCH","SCHL","SEX")
+GEO_FIELD       <- c("All"=NA, "Region"="REGION", "Division"="DIVISION", "State"="ST")
+ALLOWED_YEARS   <- 2010:2022
+```
+
+### Required packages
+
+Specific packages will need to be included, to allow us to utilize HTTP protocols to access the API. The data would be transferred as JSON packets, which will need to be translated into a readable format. Finally, the resulting data frames will need to be able to be manipulated and processed for further accessibility.
+
+```{r}
+#| echo: true
+#| warning: false
+
+library(httr)       # For accessing the API with HTTP requests
+library(jsonlite)   # For interpreting data received from API into a readable format.
+library(tidyverse)  # For processing and manipulation of the data.
+```
+
+### Request validation
+
+The user will be able to define some of the details of the request. These are: `year`, `numeric variables`, `categorical variables`, `geographic area`, and some filtering variables that would allow further sub-setting. Prior to any request being submitted to the API, the requested input needs to be validated to confirm it fits within required parameters. A helper function `check_inputs` will review the inputted parameters and stop activity if any items are out of scope.
+
+```{r}
+# Confirm that input request is within allowable parameters
+check_inputs <- function(year, numeric_vars, cat_vars, geo, subset) {
+  # Year must be a single integer in our allowed range
+  if (!is.numeric(year) || length(year) != 1 || !(year %in% ALLOWED_YEARS)) {
+    stop("Year must be an integer in 2010–2022.")
+  }
+  # At least one numeric variable (besides the weight PWGTP, which we auto-include)
+  if (length(numeric_vars) < 1) stop("provide at least one numeric variable.")
+  # Only allow variables listed in the spec
+  bad_num <- setdiff(numeric_vars, ALLOWED_NUMERIC)
+  if (length(bad_num)) stop("unknown numeric variable(s): ", paste(bad_num, collapse = ", "))
+  if (length(cat_vars) < 1) stop("provide at least one categorical variable.")
+  bad_cat <- setdiff(cat_vars, ALLOWED_CATEG)
+  if (length(bad_cat)) stop("unknown categorical variable(s): ", paste(bad_cat, collapse = ", "))
+  # Geography must be one of these levels
+  if (!(geo %in% names(GEO_FIELD))) {
+    stop("geo must be one of: ", paste(names(GEO_FIELD), collapse = ", "))
+  }
+  # If a subset is given, it must match the chosen geography and be coded as API codes
+  if (!is.null(subset)) {
+    if (geo == "All") stop("subset cannot be used when geo = 'All'.")
+    if (!is.character(subset) || any(!nzchar(subset))) {
+      stop("subset must be a character vector of codes for the chosen geography.")
+    }
+  }
+  invisible(TRUE)
+}
+```
+
+### Create the URL for accessing API
+
+As stated, the specifics for a query submitted to the API are done through so through the contents of the URL. The next functions generate the URL according to the search terms provided.
+
+```{r}
+# Form the base of the URL according to the year of the database to be used (defaults to 2022)
+pums_base <- function(year=2022) sprintf("https://api.census.gov/data/%d/acs/acs1/pums", year)
+
+# Building the Census API URL
+build_url <- function(year, get_vars, geo, subset_codes) {
+  base <- pums_base(year)
+  geo_field <- GEO_FIELD[[geo]]
+  
+  # Always include PWGTP (weight). Include geo field so it appears in results.
+  get_list <- unique(c(get_vars, "PWGTP", if (!is.na(geo_field)) geo_field))
+  
+  # Encode only the list of columns after get=
+  url <- paste0(base, "?get=", URLencode(paste(get_list, collapse = ",")))
+  
+  # If user asked for a subset (e.g., specific states), add "&ST=37,45"
+  if (!is.na(geo_field) && length(subset_codes)) {
+    url <- paste0(url, "&", geo_field, "=", paste(subset_codes, collapse = ","))
+  }
+  url
+}
+```
+
+### Metadata Translation Functions 
+
+Assuming the variable inputs are appropriately within scope, the request would submitted to the API. The metadata that is returned would be coded (even after translating from JSON). Some helper functions are needed to translate these labels into human-readable variable names.
+
+```{r}
+# Get the variable dictionary (metadata) for a given year.
+# Returns a big list, or NULL if the request fails.
+get_variables_metadata <- function(year) {
+  # Build the variables.json URL for the chosen year
+  url  <- paste0(pums_base(year), "/variables.json")
+  # Make a GET request
+  resp <- httr::GET(url)
+  # If HTTP error (e.g., 404/500), just return NULL quietly
+  if (httr::http_error(resp)) return(NULL)
+  # Pull the response text and convert from JSON to an R list
+  txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+  meta <- jsonlite::fromJSON(txt, simplifyVector = FALSE)
+  return(meta)
+}
+
+# From the metadata list, build a simple lookup (named character vector)
+# for a variable: names = codes, values = human-readable labels.
+# If the variable has no labels, return NULL.
+# label_lookup(): always return named {code -> label} 
+label_lookup <- function(meta, var) {
+  if (is.null(meta) || is.null(meta$variables)) return(NULL)
+  entry <- meta$variables[[var]]
+  if (is.null(entry) || is.null(entry$values)) return(NULL)
+  vals <- entry$values
+  # 0) If it's already a nice data.frame with code/label columns
+  if (is.data.frame(vals)) {
+    code_col  <- intersect(c("item","value","code","id"), names(vals))[1]
+    label_col <- intersect(c("label","text","description","name"), names(vals))[1]
+    if (!is.na(code_col) && !is.na(label_col)) {
+      labs <- as.character(vals[[label_col]])
+      names(labs) <- as.character(vals[[code_col]])
+      return(labs)
+  } }
+  # 1) Try to normalize any odd list shape into a data.frame
+  #    by round-tripping through JSON with simplifyVector = TRUE
+  norm <- try(
+    jsonlite::fromJSON(jsonlite::toJSON(vals, auto_unbox = TRUE),
+                       simplifyVector = TRUE),
+    silent = TRUE)
+  if (!inherits(norm, "try-error")) {
+    # A) data.frame with columns
+    if (is.data.frame(norm)) {
+      code_col  <- intersect(c("item","value","code","id"), names(norm))[1]
+      label_col <- intersect(c("label","text","description","name"), names(norm))[1]
+      if (!is.na(code_col) && !is.na(label_col)) {
+        labs <- as.character(norm[[label_col]])
+        names(labs) <- as.character(norm[[code_col]])
+        return(labs)
+      } }
+    # B) list with vectors item/label
+    if (is.list(norm) && !is.null(norm$item) && !is.null(norm$label)) {
+      labs <- as.character(norm$label)
+      names(labs) <- as.character(norm$item)
+      return(labs)
+    } }
+  # 2) As a last resort, handle named list/vector directly
+  if (is.list(vals) && !is.null(vals$item) && !is.null(vals$label)) {
+    labs <- as.character(vals$label)
+    names(labs) <- as.character(vals$item)
+    return(labs)
+  }
+  if (!is.null(names(vals))) {
+    labs <- vapply(vals, function(x) {
+      if (is.list(x)) as.character(x[[1]])[1] else as.character(x)[1]
+    }, character(1))
+    names(labs) <- names(vals)
+    return(labs)
+  }
+  # If there is no reliable mapping, then return null.
+  NULL
+}
+
+# Default labels we can fall back to if metadata is awkward
+default_labels <- function(var) {
+  if (var == "SEX")  return(c(`1`="Male", `2`="Female"))
+  if (var == "SCHL") return(c(`16`="Regular high school diploma",
+                              `21`="Bachelor's degree"))
+  NULL
+}
+
+# Is the label map usable for these codes? (must have names, and at least one match)
+valid_labs <- function(codes_chr, labs_named) {
+  if (is.null(labs_named) || is.null(names(labs_named))) return(FALSE)
+  nm2    <- sub("^0+", "", names(labs_named))
+  codes2 <- sub("^0+", "", codes_chr)
+  any(codes2 %in% nm2)
+}
+
+# turn raw strings into useful R columns---------------------------------
+coerce_columns <- function(df, year, numeric_vars, cat_vars, geo) {
+  meta <- get_variables_metadata(year)
+  # 1) plain numeric variables (JWAP/JWDP handled below)
+  plain_numeric <- setdiff(numeric_vars, c("JWAP","JWDP"))
+  for (v in plain_numeric) {
+    if (v %in% names(df)) df[[v]] <- suppressWarnings(as.numeric(df[[v]]))
+  }
+  # 2) time variables -> numeric midpoints (prefer labels; fallback numeric)
+  for (tv in intersect(c("JWAP","JWDP"), numeric_vars)) {
+    if (tv %in% names(df)) {
+      labs_raw <- label_lookup(meta, tv)
+      labs     <- if (valid_labs(df[[tv]], labs_raw)) labs_raw else default_labels(tv)
+      
+      lbl <- map_labels(as.character(df[[tv]]), labs)
+      if (all(is.na(lbl))) {
+        df[[tv]] <- suppressWarnings(as.numeric(df[[tv]]))  # fallback if still no match
+      } else {
+        df[[tv]] <- vapply(lbl, midpoint_from_label, numeric(1))
+      } } }
+  # 3) categorical variables -> factors with readable labels
+  for (cv in cat_vars) {
+    if (cv %in% names(df)) {
+      labs_raw  <- label_lookup(meta, cv)
+      labs      <- if (valid_labs(df[[cv]], labs_raw)) labs_raw else default_labels(cv)
+      lbl       <- map_labels(as.character(df[[cv]]), labs)
+      if (all(is.na(lbl))) {
+        df[[cv]] <- factor(df[[cv]])              # keep codes if we truly can’t map
+      } else {
+        df[[cv]] <- factor(lbl, levels = unique(unname(labs)))
+      } } }
+  # 4) weights numeric
+  if ("PWGTP" %in% names(df)) df$PWGTP <- suppressWarnings(as.numeric(df$PWGTP))
+  # 5) label the geography field too (if present)
+  geo_field <- GEO_FIELD[[geo]]
+  if (!is.na(geo_field) && geo_field %in% names(df)) {
+    labs_raw <- label_lookup(meta, geo_field)
+    labs     <- if (valid_labs(df[[geo_field]], labs_raw)) labs_raw else default_labels(geo_field)
+    if (!is.null(labs)) {
+      lbl <- map_labels(as.character(df[[geo_field]]), labs)
+      if (all(is.na(lbl))) {
+        df[[geo_field]] <- factor(df[[geo_field]])
+      } else {
+        df[[geo_field]] <- factor(lbl, levels = unique(unname(labs)))
+      }
+    } else {
+      df[[geo_field]] <- factor(df[[geo_field]])
+    } }
+  df
+}
+```
+
+The above helper functions are each set up to submit URL requests, receive the data, and process them into readable formats. The following functions `pums_get_one_year` and `pums_get_multi_year` process and submit the requests based on whether the query is for one year of data, or for multiple years.
+
+```{r}
+# pulling one year of PUMS--------------------------------- 
+pums_get_one_year <- function(year, numeric_vars, cat_vars, geo, subset = NULL) {
+  # 1) validate inputs
+  check_inputs(year, numeric_vars, cat_vars, geo, subset)
+  # 2) build URL (PWGTP auto-added in build_url)
+  get_vars <- unique(c(numeric_vars, cat_vars))
+  subset_codes <- if (is.null(subset)) character(0) else subset
+  url <- build_url(year, get_vars, geo, subset_codes)
+  # 3) call the API
+  resp <- httr::GET(url)
+  if (httr::http_error(resp)) {
+    stop("API request failed. Status: ", httr::status_code(resp))
+  }
+  # 4) parse JSON (first row = header)
+  txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+  arr <- jsonlite::fromJSON(txt, simplifyVector = TRUE)
+  if (NROW(arr) < 2) stop("API returned no data for these parameters.")
+  header <- arr[1, ]
+  dat <- tibble::as_tibble(as.data.frame(arr[-1, , drop = FALSE],
+                                         stringsAsFactors = FALSE))
+  names(dat) <- header
+  # 5) coerce + label
+  dat <- coerce_columns(dat, year, numeric_vars, cat_vars, geo)
+  # 6) tag and return
+  as_census(dat)
+}
+
+
+# pulling multiple years (loop + bind rows)------------------------
+pums_get_multi_year <- function(years, numeric_vars, cat_vars, geo, subset ) {
+  if (!is.numeric(years) || any(!(years %in% ALLOWED_YEARS))) {
+    stop("all years must be in 2010–2022.")
+  }
+  parts <- vector("list", length(years))
+  for (i in seq_along(years)) {
+    y <- years[i]
+    one <- pums_get_one_year(y, numeric_vars, cat_vars, geo, subset)
+    one$year <- y
+    parts[[i]] <- one
+  }
+  out <- dplyr::bind_rows(parts)
+  as_census(out)
+}
+```
+
+## Final User Function
+
+A single function can be utilized then that will take the user's request, and submit it to either of the above functions based on whether the `years` variable contains a single year or multiple years.
+
+```{r}
+# FUNCTION: pums(years, numeric_vars, cat_vars, geo, subset)
+# Usage: Each variable is a keyword where either a vector (for numeric_vars
+# or cat_vars) or singular variable should be used. 
+
+# Default variables:
+# year = 2022
+# numeric_vars: c("AGEP")
+# character_vars: c("SEX")
+# geo: "All"
+# subset: null
+
+pums <- function(year = 2022,
+                 numeric_vars = c("AGEP"),
+                 cat_vars = c("SEX"),
+                 geo = "All",
+                 subset = null) {
+  # Confirm whether `year` is a single numeric value
+  if (length(year) == 1 & is.numeric(year)) {
+    pums_get_one_year(year, numeric_vars, cat_vars, geo, subset)
+  } else if (length(year) > 1 & is.numeric(year)) {
+    pums_get_multi_year(year, numeric_vars, cat_vars, geo, subset)
+  } else stop("Unable to process `year` request. Please enter either a single integer for year or a vector of years.")
+}
+```
 
 ## Writing generic function for summarizing
 
