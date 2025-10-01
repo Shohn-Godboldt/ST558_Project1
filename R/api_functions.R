@@ -20,7 +20,7 @@ as_census <- function(df){
   df
 }
 
-# Input validation (clear, beginner-friendly errors) ----
+# Input validation (clear, beginner-friendly errors) --------------------------
 check_inputs <- function(year, numeric_vars, cat_vars, geo, subset) {
   
   # Year must be a single integer in our allowed range
@@ -55,7 +55,7 @@ check_inputs <- function(year, numeric_vars, cat_vars, geo, subset) {
   invisible(TRUE)
 }
 
-# Metadata helpers
+# Metadata helpers--------------------------------------------------------
 
 # Get the variable dictionary (metadata) for a given year.
 # Returns a big list, or NULL if the request fails.
@@ -147,7 +147,7 @@ label_lookup <- function(meta, var) {
 
 
 
-# Building the Census API URL 
+# Building the Census API URL--------------------------------------------------
 build_url <- function(year, get_vars, geo, subset_codes) {
   base <- pums_base(year)
   geo_field <- GEO_FIELD[[geo]]
@@ -183,7 +183,7 @@ valid_labs <- function(codes_chr, labs_named) {
   any(codes2 %in% nm2)
 }
 
-# turn raw strings into useful R columns 
+# turn raw strings into useful R columns---------------------------------
 coerce_columns <- function(df, year, numeric_vars, cat_vars, geo) {
   meta <- get_variables_metadata(year)
   
@@ -245,5 +245,67 @@ coerce_columns <- function(df, year, numeric_vars, cat_vars, geo) {
   }
   
   df
+}
+
+# pulling one year of PUMS--------------------------------- 
+pums_get_one_year <- function(year = 2022,
+                              numeric_vars = c("AGEP"),
+                              cat_vars = c("SEX"),
+                              geo = "All",
+                              subset = NULL) {
+  
+  # 1) validate inputs
+  check_inputs(year, numeric_vars, cat_vars, geo, subset)
+  
+  # 2) build URL (PWGTP auto-added in build_url)
+  get_vars <- unique(c(numeric_vars, cat_vars))
+  subset_codes <- if (is.null(subset)) character(0) else subset
+  url <- build_url(year, get_vars, geo, subset_codes)
+  
+  # 3) call the API
+  resp <- httr::GET(url)
+  if (httr::http_error(resp)) {
+    stop("API request failed. Status: ", httr::status_code(resp))
+  }
+  
+  # 4) parse JSON (first row = header)
+  txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+  arr <- jsonlite::fromJSON(txt, simplifyVector = TRUE)
+  if (NROW(arr) < 2) stop("API returned no data for these parameters.")
+  
+  header <- arr[1, ]
+  dat <- tibble::as_tibble(as.data.frame(arr[-1, , drop = FALSE],
+                                         stringsAsFactors = FALSE))
+  names(dat) <- header
+  
+  # 5) coerce + label
+  dat <- coerce_columns(dat, year, numeric_vars, cat_vars, geo)
+  
+  # 6) tag and return
+  as_census(dat)
+}
+
+
+# pulling multiple years (loop + bind rows)------------------------
+pums_get_multi_year <- function(years,
+                                numeric_vars = c("AGEP"),
+                                cat_vars = c("SEX"),
+                                geo = "All",
+                                subset = NULL) {
+  
+  if (!is.numeric(years) || any(!(years %in% ALLOWED_YEARS))) {
+    stop("all years must be in 2010–2022.")
+  }
+  
+  parts <- vector("list", length(years))
+  for (i in seq_along(years)) {
+    y <- years[i]
+    one <- pums_get_one_year(y, numeric_vars, cat_vars, geo, subset)
+    one$year <- y
+    parts[[i]] <- one
+  }
+  
+  out <- dplyr::bind_rows(parts)
+  as_census(out)
 }
 
