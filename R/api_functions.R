@@ -183,6 +183,22 @@ valid_labs <- function(codes_chr, labs_named) {
   any(codes2 %in% nm2)
 }
 
+# ---- helper: map codes to labels, tolerating leading zeros -----------------
+map_labels <- function(codes_chr, labs_named) {
+  if (is.null(labs_named)) return(rep(NA_character_, length(codes_chr)))
+  # try exact name match first
+  out <- unname(labs_named[codes_chr])
+  # if all NA, try matching after stripping leading zeros on both sides
+  if (all(is.na(out))) {
+    nm2    <- sub("^0+", "", names(labs_named))
+    codes2 <- sub("^0+", "", codes_chr)
+    idx    <- match(codes2, nm2)
+    out    <- ifelse(is.na(idx), NA_character_, unname(labs_named)[idx])
+  }
+  out
+}
+
+
 # turn raw strings into useful R columns---------------------------------
 coerce_columns <- function(df, year, numeric_vars, cat_vars, geo) {
   meta <- get_variables_metadata(year)
