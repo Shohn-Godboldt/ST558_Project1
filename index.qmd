@@ -99,7 +99,7 @@ The first step for generation of the function will be to ensure the packages to 
 ```{r}
 ALLOWED_NUMERIC <- c("AGEP","GASP","GRPIP","JWAP","JWDP","JWMNP")  # PWGTP always added
 ALLOWED_CATEG   <- c("FER","HHL","HISPEED","JWTRNS","SCH","SCHL","SEX")
-GEO_FIELD       <- c("All"=NA, "Region"="REGION", "Division"="DIVISION", "State"="ST")
+GEO_FIELD       <- c("All"=NA, "Region"="REGION", "County"="COUNTY", "Division"="DIVISION", "State"="ST")
 ALLOWED_YEARS   <- 2010:2022
 ```
 
@@ -164,14 +164,16 @@ build_url <- function(year, get_vars, geo, subset_codes) {
   geo_field <- GEO_FIELD[[geo]]
   
   # Always include PWGTP (weight). Include geo field so it appears in results.
-  get_list <- unique(c(get_vars, "PWGTP", if (!is.na(geo_field)) geo_field))
+  get_list <- unique(c(get_vars, "PWGTP"))
   
   # Encode only the list of columns after get=
   url <- paste0(base, "?get=", URLencode(paste(get_list, collapse = ",")))
   
   # If user asked for a subset (e.g., specific states), add "&ST=37,45"
   if (!is.na(geo_field) && length(subset_codes)) {
-    url <- paste0(url, "&", geo_field, "=", paste(subset_codes, collapse = ","))
+    if (geo == "County") { 
+      url <- paste0(url, "&for=County:",subset_codes[1],"&in=State:",subset_codes[2])
+    } else { url <- paste0(url, "&for=", geo, ":", paste(subset_codes, collapse = ",")) }
   }
   url
 }
@@ -270,6 +272,20 @@ valid_labs <- function(codes_chr, labs_named) {
   any(codes2 %in% nm2)
 }
 
+map_labels <- function(codes_chr, labs_named) {
+  if (is.null(labs_named)) return(rep(NA_character_, length(codes_chr)))
+  # try exact name match first
+  out <- unname(labs_named[codes_chr])
+  # if all NA, try matching after stripping leading zeros on both sides
+  if (all(is.na(out))) {
+    nm2    <- sub("^0+", "", names(labs_named))
+    codes2 <- sub("^0+", "", codes_chr)
+    idx    <- match(codes2, nm2)
+    out    <- ifelse(is.na(idx), NA_character_, unname(labs_named)[idx])
+  }
+  out
+}
+
 # turn raw strings into useful R columns---------------------------------
 coerce_columns <- function(df, year, numeric_vars, cat_vars, geo) {
   meta <- get_variables_metadata(year)
@@ -283,8 +299,7 @@ coerce_columns <- function(df, year, numeric_vars, cat_vars, geo) {
     if (tv %in% names(df)) {
       labs_raw <- label_lookup(meta, tv)
       labs     <- if (valid_labs(df[[tv]], labs_raw)) labs_raw else default_labels(tv)
-      
-      lbl <- map_labels(as.character(df[[tv]]), labs)
+      lbl      <- map_labels(as.character(df[[tv]]), labs)
       if (all(is.na(lbl))) {
         df[[tv]] <- suppressWarnings(as.numeric(df[[tv]]))  # fallback if still no match
       } else {
@@ -352,7 +367,6 @@ pums_get_one_year <- function(year, numeric_vars, cat_vars, geo, subset = NULL) 
   as_census(dat)
 }
 
-
 # pulling multiple years (loop + bind rows)------------------------
 pums_get_multi_year <- function(years, numeric_vars, cat_vars, geo, subset ) {
   if (!is.numeric(years) || any(!(years %in% ALLOWED_YEARS))) {
@@ -368,36 +382,66 @@ pums_get_multi_year <- function(years, numeric_vars, cat_vars, geo, subset ) {
   out <- dplyr::bind_rows(parts)
   as_census(out)
 }
+
+# Make returned tibbles carry a 'census' class (for your later summary/plot)
+as_census <- function(df){
+  class(df) <- c("census", class(df))
+  df
+}
 ```
 
 ## Final User Function
 
-A single function can be utilized then that will take the user's request, and submit it to either of the above functions based on whether the `years` variable contains a single year or multiple years.
+A single function can be utilized then that will take the user's request, and submit it to either of the above functions based on whether the `years` variable contains a single year or multiple years. This function takes the form
+
+```
+pums(years, num_vars, cat_vars, geo, subset)
+```
+
+* `years` can be a single year or a vector of years, between 2010-2022, inclusive.
+
+* `num_vars` is either a singular, or vector of, numerical variables, from the list above. Default is `AGEP`. (PWDGT is included by default.)
+
+* `cat_vars` is a singular, or vector of, categorical variables. Default is `SEX`.
+
+* `geo` is the geographical area of interest, and could be either a "Region", "Division", "State", or "All". If any option (other than 'all') is chosen, then the final variable
+
+* `subset` must be declared as well. This is the FIPS number that refers to the specific locale, for instance "37" refers to North Carolina. (This must be passed as a string - remember to include it in quotes!)
 
 ```{r}
-# FUNCTION: pums(years, numeric_vars, cat_vars, geo, subset)
-# Usage: Each variable is a keyword where either a vector (for numeric_vars
-# or cat_vars) or singular variable should be used. 
-
-# Default variables:
-# year = 2022
-# numeric_vars: c("AGEP")
-# character_vars: c("SEX")
-# geo: "All"
-# subset: null
-
 pums <- function(year = 2022,
-                 numeric_vars = c("AGEP"),
+                 num_vars = c("AGEP"),
                  cat_vars = c("SEX"),
                  geo = "All",
-                 subset = null) {
-  # Confirm whether `year` is a single numeric value
+                 subset = NULL) {
+  # Confirm whether `year` is a single year, range of years, or something undecipherable.
   if (length(year) == 1 & is.numeric(year)) {
-    pums_get_one_year(year, numeric_vars, cat_vars, geo, subset)
+    pums_get_one_year(year, num_vars, cat_vars, geo, subset)
   } else if (length(year) > 1 & is.numeric(year)) {
-    pums_get_multi_year(year, numeric_vars, cat_vars, geo, subset)
+    pums_get_multi_year(year, num_vars, cat_vars, geo, subset)
   } else stop("Unable to process `year` request. Please enter either a single integer for year or a vector of years.")
 }
+```
+
+Example 1 includes all default options. (Except geo="State", code 16.)
+
+```{r}
+pumsDemo1 <- pums(geo="State", subset="16")
+head(pumsDemo1, n=20) |> knitr::kable()
+```
+
+Example 2 shows the same default options, but instead of 2022, it is a range of years 2013 through 2015  and only in Georgia. (State code "13")
+ 
+```{r}
+pumsDemo2 <- pums(year = 2013:2015, geo="State", subset="13")
+head(pumsDemo2, n=20)|> knitr::kable()
+```
+
+And example 3 - year 2018, examining numerical variables GASP and JWDP; and categorical variables HISPEED and SCHL. This time we are also declaring a region of interest, just in the state of North Carolina.
+
+```{r}
+pumsDemo3 <- pums(year = 2018, cat_vars=c("HISPEED","SCHL"), num_vars=c("GASP","JWDP"), geo="State", subset="37")
+head(pumsDemo3, n=20) |> knitr::kable()
 ```
 
 ## Writing generic function for summarizing
@@ -417,36 +461,33 @@ The function was created in a way that took up to three variables:
 The summary statistics returned will be the mean and standard deviation for each numeric variable, and the counts of each factor for categorical variables. These are returned as named lists, which are convenient for assigning to a variable and calling specific items. 
 
 ```{r}
+#| warning: false
+
+# Usage: summary(item[, numerics = ..., categoricals = ...])
 summary.census <- function(object, ...) {
-  
   args <- list(...)
-  
   # Stop if any keywords are included that are not `numerics` or `categoricals`
   if (length(setdiff(names(args), c("numerics", "categoricals")))) {
     stop("Keyword error: keywords must be `numerics=` or `categoricals=` to specify column summary request.")
   }
-  
   # If `numerics` are provided, confirm they are actually numeric variables:
   if ("numerics" %in% names(args)) {
     if (!all(sapply(object[args$numerics], is.numeric))) {
       stop("Selected numeric variables should all be numeric.")
     } else { numerics <- args$numerics }
   } else {
-    numerics <- names(select(object, where(is.numeric)))
+    numerics <- names(select(all_of(object), where(is.numeric)))
     # Unless it's specified, do not return PWGTP variable.    
     numerics <- numerics[!numerics %in% "PWGTP"]
   }
-  
   # If `categoricals` are provided, confirm they're actually factors:
   if ("categoricals" %in% names(args)) {
     if (!all(sapply(object[args$categoricals], is.factor))) {
       stop("Selected categorical variables should all be factors.")
     } else { categoricals <- args$categoricals }
   } else categoricals <- names(select(object, where(is.factor)))
-  
   # Reduce the input `object` to its selected variables.
-  object <- object |> select(numerics, categoricals)
-  
+  object <- object |> select(numerics, all_of(categoricals))
   # Function to produce `summary` reporting for census object
   report <- function(obj) {
     # Numeric variables: return a named list with `mean` and `sigma`
@@ -459,27 +500,31 @@ summary.census <- function(object, ...) {
   lapply(as.list(object), FUN=report)
 }
 
-# THIS IS JUST TO SHOW THAT IT WORKS. Show some examples using the function created here.
-example <- iris
-class(example) <- c("census", class(iris))
-summary(example)
+pumsSummary <- summary(pumsDemo3)
+pumsSummary
 ```
 
 ## Plot function
 
 Similar to the `summary` adaptation above, a `plot` adaptation is also generated for `census` objects. This is designed to require a single categorical variable and a single numerical variable, as strings. The usage for this command is
 
-```plot(object, categorical="[Categorical Var]", numerical="[Numerical Variable]")```
+`plot(object, categorical="[Categorical Var]", numerical="[Numerical Variable]")`
 
-where *[Categorical Var]* and *[Numerical Var]* are substitued with the names of the desired columns of their requisite classes.
+where *[Categorical Var]* and *[Numerical Var]* are substituted with the names of the desired columns of their requisite classes. In this example I will use `pumsDemo2` to plot the AGEP against SEX. (Variable names should be passed as strings - remember the quotes!)
+
 
 ```{r}
-# Run plot() on a `census` object.
+#| warning: false
 
-plot.census <- function(object, categorical, numerical, ...) {
-  args = list(...) # Look at possibly adding options for customization. Add a title, for instance?
-  ggplot(object,
-         aes(x=get(categorical), y=get(numerical), weight=PWGTP)) +
+plot.census <- function(object, categorical, numerical) {
+  if (missing(categorical) | missing(numerical)) stop("plot.census requires both a categorical and a numerical variable.")
+  ggplot(object, aes(x=get(categorical), y=get(numerical), weight=PWGTP)) +
+    labs(x=categorical, y=numerical, title=paste0("Boxplot of variables ",categorical, " and ",numerical)) +
+    theme(plot.title=element_text(hjust=0.5, size=16, color="red", face="bold"),
+          axis.title.x=element_text(size=14, color="blue", face="bold"),
+          axis.title.y=element_text(size=14, color="orange", face="bold")) +
     geom_boxplot()
 }
+
+plot(pumsDemo2, categorical="SEX", numerical="AGEP")
 ```
