@@ -394,19 +394,19 @@ as_census <- function(df){
 
 A single function can be utilized then that will take the user's request, and submit it to either of the above functions based on whether the `years` variable contains a single year or multiple years. This function takes the form
 
-```
+```         
 pums(years, num_vars, cat_vars, geo, subset)
 ```
 
-* `years` can be a single year or a vector of years, between 2010-2022, inclusive.
+-   `years` can be a single year or a vector of years, between 2010-2022, inclusive.
 
-* `num_vars` is either a singular, or vector of, numerical variables, from the list above. Default is `AGEP`. (PWDGT is included by default.)
+-   `num_vars` is either a singular, or vector of, numerical variables, from the list above. Default is `AGEP`. (PWDGT is included by default.)
 
-* `cat_vars` is a singular, or vector of, categorical variables. Default is `SEX`.
+-   `cat_vars` is a singular, or vector of, categorical variables. Default is `SEX`.
 
-* `geo` is the geographical area of interest, and could be either a "Region", "Division", "State", or "All". If any option (other than 'all') is chosen, then the final variable
+-   `geo` is the geographical area of interest, and could be either a "Region", "Division", "State", or "All". If any option (other than 'all') is chosen, then the final variable
 
-* `subset` must be declared as well. This is the FIPS number that refers to the specific locale, for instance "37" refers to North Carolina. (This must be passed as a string - remember to include it in quotes!)
+-   `subset` must be declared as well. This is the FIPS number that refers to the specific locale, for instance "37" refers to North Carolina. (This must be passed as a string - remember to include it in quotes!)
 
 ```{r}
 pums <- function(year = 2022,
@@ -423,15 +423,15 @@ pums <- function(year = 2022,
 }
 ```
 
-Example 1 includes all default options. (Except geo="State", code 16.)
+Example 1 includes all default options. (Except geo="State", subset="16", this is for Idaho.)
 
 ```{r}
 pumsDemo1 <- pums(geo="State", subset="16")
 head(pumsDemo1, n=20) |> knitr::kable()
 ```
 
-Example 2 shows the same default options, but instead of 2022, it is a range of years 2013 through 2015  and only in Georgia. (State code "13")
- 
+Example 2 shows the same default options, but instead of 2022, it is a range of years 2013 through 2015 and only in Georgia. (State code "13")
+
 ```{r}
 pumsDemo2 <- pums(year = 2013:2015, geo="State", subset="13")
 head(pumsDemo2, n=20)|> knitr::kable()
@@ -461,7 +461,7 @@ The function was created in a way that took up to three variables:
 The summary statistics returned will be the mean and standard deviation for each numeric variable, and the counts of each factor for categorical variables. These are returned as named lists, which are convenient for assigning to a variable and calling specific items.
 
 ```{r}
-#| warning: false
+#| warning: off
 
 # Usage: summary(item[, numerics = ..., categoricals = ...])
 summary.census <- function(object, ...) {
@@ -509,17 +509,11 @@ pumsSummary
 Similar to the `summary` adaptation above, a `plot` adaptation is also generated for `census` objects. This is designed to require a single categorical variable and a single numerical variable, as strings. The usage for this command is
 
 `plot(object, categorical="[Categorical Var]", numerical="[Numerical Variable]")`
-<<<<<<< HEAD
 
-where *[Categorical Var]* and *[Numerical Var]* are substituted with the names of the desired columns of their requisite classes. In this example I will use `pumsDemo2` to plot the AGEP against SEX. (Variable names should be passed as strings - remember the quotes!)
-
-=======
-
-where *\[Categorical Var\]* and *\[Numerical Var\]* are substitued with the names of the desired columns of their requisite classes.
->>>>>>> 1a0c11caa863c78992e97cab2c7a3d99d47e8363
+where *\[Categorical Var\]* and *\[Numerical Var\]* are substituted with the names of the desired columns of their requisite classes. In this example I will use `pumsDemo2` to plot the AGEP against SEX. (Variable names should be passed as strings - remember the quotes!)
 
 ```{r}
-#| warning: false
+#| warning: off
 
 plot.census <- function(object, categorical, numerical) {
   if (missing(categorical) | missing(numerical)) stop("plot.census requires both a categorical and a numerical variable.")
@@ -530,9 +524,6 @@ plot.census <- function(object, categorical, numerical) {
           axis.title.y=element_text(size=14, color="orange", face="bold")) +
     geom_boxplot()
 }
-<<<<<<< HEAD
 
 plot(pumsDemo2, categorical="SEX", numerical="AGEP")
-=======
->>>>>>> 1a0c11caa863c78992e97cab2c7a3d99d47e8363
 ```
