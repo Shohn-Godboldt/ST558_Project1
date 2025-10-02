@@ -179,7 +179,7 @@ build_url <- function(year, get_vars, geo, subset_codes) {
 }
 ```
 
-### Metadata Translation Functions 
+### Metadata Translation Functions
 
 Assuming the variable inputs are appropriately within scope, the request would submitted to the API. The metadata that is returned would be coded (even after translating from JSON). Some helper functions are needed to translate these labels into human-readable variable names.
 
@@ -446,19 +446,19 @@ head(pumsDemo3, n=20) |> knitr::kable()
 
 ## Writing generic function for summarizing
 
-A `summary` function has been created to take our `census` objects and provide some statistical information. 
+A `summary` function has been created to take our `census` objects and provide some statistical information.
 
 The function was created in a way that took up to three variables:
 
 1.  The `census` item generated in the function above;
 
 2.  (OPTIONAL) A vector or single item with keyword `numerics=` which will contain the **numeric** variables selected. An error is generated if the keyword `numerics=` is used with a categorical column.
-    
-+ Note: The `PWGTP` variable is not returned by default. This must be specifically requested in `numerics=` in order to call it.
+
+-   Note: The `PWGTP` variable is not returned by default. This must be specifically requested in `numerics=` in order to call it.
 
 3.  (OPTIONAL) A vector or single item with the keyword `categoricals=` which will contain the **categorical** variables selected. An error is generated in the keyword `categoricals=` is used with a numeric column.
 
-The summary statistics returned will be the mean and standard deviation for each numeric variable, and the counts of each factor for categorical variables. These are returned as named lists, which are convenient for assigning to a variable and calling specific items. 
+The summary statistics returned will be the mean and standard deviation for each numeric variable, and the counts of each factor for categorical variables. These are returned as named lists, which are convenient for assigning to a variable and calling specific items.
 
 ```{r}
 #| warning: false
@@ -509,9 +509,14 @@ pumsSummary
 Similar to the `summary` adaptation above, a `plot` adaptation is also generated for `census` objects. This is designed to require a single categorical variable and a single numerical variable, as strings. The usage for this command is
 
 `plot(object, categorical="[Categorical Var]", numerical="[Numerical Variable]")`
+<<<<<<< HEAD
 
 where *[Categorical Var]* and *[Numerical Var]* are substituted with the names of the desired columns of their requisite classes. In this example I will use `pumsDemo2` to plot the AGEP against SEX. (Variable names should be passed as strings - remember the quotes!)
 
+=======
+
+where *\[Categorical Var\]* and *\[Numerical Var\]* are substitued with the names of the desired columns of their requisite classes.
+>>>>>>> 1a0c11caa863c78992e97cab2c7a3d99d47e8363
 
 ```{r}
 #| warning: false
@@ -525,6 +530,9 @@ plot.census <- function(object, categorical, numerical) {
           axis.title.y=element_text(size=14, color="orange", face="bold")) +
     geom_boxplot()
 }
+<<<<<<< HEAD
 
 plot(pumsDemo2, categorical="SEX", numerical="AGEP")
+=======
+>>>>>>> 1a0c11caa863c78992e97cab2c7a3d99d47e8363
 ```
